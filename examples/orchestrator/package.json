@@ -1,0 +1,17 @@
+{
+  "name": "example-orchestrator",
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/main.ts"
+  },
+  "dependencies": {
+    "@l-device/orchestrator": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
