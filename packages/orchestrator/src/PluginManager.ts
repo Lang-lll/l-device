@@ -1,28 +1,46 @@
+import { logger } from './utils/logger'
 import type { PluginInfo, PluginMetadata } from './types/plugins'
 
 export class PluginManager {
   private plugins: Map<string, PluginInfo> = new Map()
   private heartbeatInterval?: NodeJS.Timeout
+  private heartbeatCheckInterval: number
+  private _onSendHeartbeat?: (metadata: PluginMetadata) => void
 
-  constructor(private heartbeatCheckInterval: number = 10000) {}
+  constructor(options?: {
+    heartbeatCheckInterval?: number
+    onSendHeartbeat?: (metadata: PluginMetadata) => void
+  }) {
+    const { heartbeatCheckInterval, onSendHeartbeat } = options || {}
+    this.heartbeatCheckInterval = heartbeatCheckInterval || 20000
+    this._onSendHeartbeat = onSendHeartbeat?.bind(this)
+  }
 
   registerPlugin(metadata: PluginMetadata): boolean {
     /*const existingPlugin = this.plugins.get(metadata.name);
 
     if (existingPlugin && existingPlugin.status === "connected") {
-      console.log(`插件 ${metadata.name} 已存在，先断开旧连接`);
+      logger.info(`插件 ${metadata.name} 已存在，先断开旧连接`);
       this.markDisconnected(metadata.name);
     }*/
 
-    this.plugins.set(metadata.plugin_name, {
-      metadata,
-      status: 'connected',
-      lastSeen: Date.now(),
-      missedHeartbeats: 0,
-    })
+    try {
+      if (metadata.plugin_name && (metadata.transportUrl || metadata.port)) {
+        this.plugins.set(metadata.plugin_name, {
+          metadata,
+          status: 'connected',
+          lastSeen: Date.now(),
+          missedHeartbeats: 0,
+        })
 
-    console.log(`插件注册: ${metadata.plugin_name} v${metadata.version}`)
-    return true
+        logger.info(`插件注册: ${metadata.plugin_name} v${metadata.version}`)
+        return true
+      }
+    } catch (e) {
+      logger.error(`插件注册失败: ${metadata}`)
+    }
+
+    return false
   }
 
   getPlugin(name: string) {
@@ -35,7 +53,8 @@ export class PluginManager {
 
   // 心跳更新
   updateHeartbeat(pluginName: string): boolean {
-    console.debug('receive updateHeartbeat', pluginName)
+    logger.debug('接收到插件心跳: ', pluginName)
+
     const plugin = this.plugins.get(pluginName)
     if (!plugin) {
       return false
@@ -44,12 +63,12 @@ export class PluginManager {
     plugin.lastSeen = Date.now()
     plugin.missedHeartbeats = 0
 
-    console.log('updateHeartbeat', pluginName)
+    logger.info('updateHeartbeat', pluginName)
 
     // 如果之前是断开状态，重新连接
     if (plugin.status === 'disconnected') {
       plugin.status = 'connected'
-      console.log(`插件重新连接: ${pluginName}`)
+      logger.info(`插件重新连接: ${pluginName}`)
     }
 
     return true
@@ -75,10 +94,12 @@ export class PluginManager {
           // 连续错过3次心跳
           this.markDisconnected(name)
         } else {
-          console.log(
-            `插件 ${name} 心跳延迟，错过 ${plugin.missedHeartbeats} 次`
+          logger.info(
+            `插件 ${name} 心跳延迟，错过 ${plugin.missedHeartbeats} 次`,
           )
         }
+      } else {
+        this._onSendHeartbeat?.(plugin.metadata)
       }
     }
   }
@@ -87,7 +108,7 @@ export class PluginManager {
     const plugin = this.plugins.get(pluginName)
     if (plugin) {
       plugin.status = 'disconnected'
-      console.log(`插件断开: ${pluginName}`)
+      logger.info(`插件断开: ${pluginName}`)
     }
   }
 

@@ -1,10 +1,11 @@
 import express from 'express'
+import { logger } from '../utils/logger'
 import type { Express, Request, Response } from 'express'
 import type { PluginOnMessageFn } from '../types/plugins'
 
 export class ExpressManager {
   private app: Express
-  private server: any
+  private server?: ReturnType<Express['listen']>
   private port: number
   private onMessage?: PluginOnMessageFn
 
@@ -42,13 +43,15 @@ export class ExpressManager {
 
     // Webhook接收器 - 用于接收插件发来的消息
     this.app.post('/webhook', (req: Request, res: Response) => {
-      const message = req.body
+      const data = req.body
 
       // 触发消息回调
       this.onMessage?.({
-        transportUrl: `${req.protocol}://${req.host}`,
-        ...message,
-        _type: 'http',
+        ...data,
+        message: {
+          ...data.message,
+          _type: 'http',
+        },
       })
 
       res.json({ received: true })
@@ -58,18 +61,20 @@ export class ExpressManager {
   async initialize(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server = this.app.listen(this.port, () => {
-        console.log(`Express服务器运行在端口 ${this.port}`)
+        logger.info(`Express服务器运行在端口 ${this.port}`)
         resolve()
       })
 
-      this.server.on('error', (error: any) => {
-        console.error('Express服务器启动失败:', error)
+      this.server.on('error', (error) => {
+        logger.error('Express服务器启动失败:', error)
         reject(error)
       })
     })
   }
 
   send(target: string, message: Record<string, any>): void {
+    logger.info(`发送消息到插件: ${target}， 消息内容: `, message)
+
     const url = `${target}/webhook/orchestrator`
 
     fetch(url, {
@@ -79,18 +84,18 @@ export class ExpressManager {
     })
       .then((response) => {
         if (!response.ok) {
-          console.error(`HTTP发送失败: ${response.statusText}`)
+          logger.error(`HTTP发送失败: ${response.statusText}`)
         }
       })
       .catch((error) => {
-        console.error(`HTTP发送错误到 ${target}:`, error)
+        logger.error(`HTTP发送错误到 ${target}:`, error)
       })
   }
 
   async destroy(): Promise<void> {
     if (this.server) {
       this.server.close()
-      console.log('Express服务器已关闭')
+      logger.info('Express服务器已关闭')
     }
   }
 }

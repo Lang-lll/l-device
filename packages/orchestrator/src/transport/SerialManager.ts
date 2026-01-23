@@ -1,5 +1,6 @@
 import { SerialPort } from 'serialport'
 import { ReadlineParser } from '@serialport/parser-readline'
+import { logger } from '../utils/logger'
 import type { PortInfo } from '@serialport/bindings-interface'
 import type { PluginOnMessageFn } from '../types/plugins'
 
@@ -16,7 +17,7 @@ export class SerialManager {
 
   // 初始化串口管理器
   async initialize() {
-    console.log('初始化串口管理器...')
+    logger.info('初始化串口管理器...')
 
     // 初始扫描
     await this.scanAndConnect()
@@ -37,7 +38,7 @@ export class SerialManager {
         }
       }
     } catch (error) {
-      console.error('串口扫描错误:', error)
+      logger.error('串口扫描错误:', error)
     }
   }
 
@@ -77,12 +78,12 @@ export class SerialManager {
 
       // 错误处理
       serialPort.on('error', (error) => {
-        console.error(`串口错误 ${portPath}:`, error)
+        logger.error(`串口错误 ${portPath}:`, error)
         this.disconnectPort(portPath)
       })
 
       serialPort.on('close', () => {
-        console.log(`串口关闭: ${portPath}`)
+        logger.info(`串口关闭: ${portPath}`)
         this.disconnectPort(portPath)
       })
 
@@ -92,9 +93,9 @@ export class SerialManager {
         portInfo: portInfo,
       })
 
-      console.log(`串口连接: ${portPath} (${portInfo.manufacturer})`)
+      logger.info(`串口连接: ${portPath} (${portInfo.manufacturer})`)
     } catch (error) {
-      console.error(`连接串口失败 ${portPath}:`, error)
+      logger.error(`连接串口失败 ${portPath}:`, error)
     }
   }
 
@@ -103,13 +104,15 @@ export class SerialManager {
     if (!data) return
 
     try {
-      const message = JSON.parse(data)
-      message.port = portPath // 添加端口信息
+      const parsed = JSON.parse(data)
 
       // 发射消息到Orchestrator
-      this.onMessage?.({ ...message, _type: 'serial' })
+      this.onMessage?.({
+        ...parsed,
+        message: { _type: 'serial', port: portPath, ...parsed.message },
+      })
     } catch (error) {
-      console.log(`原始数据 [${portPath}]:`, data)
+      logger.info(`原始数据 [${portPath}]:`, data)
     }
   }
 
@@ -122,10 +125,10 @@ export class SerialManager {
         const data = JSON.stringify(message) + '\n'
         port?.serialPort.write(data)
       } catch (error) {
-        console.error(`发送消息到 ${portPath} 失败:`, error)
+        logger.error(`发送消息到 ${portPath} 失败:`, error)
       }
     } else {
-      console.log(`端口未连接: ${portPath}`)
+      logger.info(`端口未连接: ${portPath}`)
     }
   }
 
@@ -139,7 +142,7 @@ export class SerialManager {
       }
 
       this.ports.delete(portPath)
-      console.log(`断开连接: ${portPath}`)
+      logger.info(`断开连接: ${portPath}`)
     }
   }
 
